@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "quest-mobile",
-    "slug": "quest-mobile",
+    "name": "payv-mobile",
+    "slug": "payv-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "questmobile",
+    "scheme": "payvmobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
