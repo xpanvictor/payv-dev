@@ -7,3 +7,6 @@ edition = "2024"
 core = { path = "../core" }
 btleplug = "0.11.8"
 async-trait = "0.1.89"
+futures = "0.3.31"
+bluster = "0.2.0"
+uuid = { version = "1.11.0", features = ["v4", "serde"] }
