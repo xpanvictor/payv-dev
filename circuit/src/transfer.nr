@@ -1,6 +1,7 @@
+use super::errors;
+use super::errors::ERR_VALUE_BALANCES;
 use super::models::Note;
 use poseidon::poseidon2;
-use super::errors;
 
 /// Transfer logic
 /// Uses ...
@@ -19,8 +20,6 @@ pub struct TxnInputPrivate<let N: u32, let M: u32> {
     path_indices: [[bool; 32]; N],
 }
 
-pub 
-
 // for now default 2,2 until I decide structure of actual data
 /// Support private transfer of notes
 ///
@@ -32,15 +31,24 @@ pub fn main<let N: u32, let M: u32>(
     private_data: TxnInputPrivate<N, M>,
     public_data: TxnInputPublic<N, M>,
 ) {
+    let mut input_amount = 0;
+    let mut output_amount = 0;
+
     // assert nullifiers are correctly passed
     for i in 0..N {
-        let note = private_data.input_notes[i];
-        let input = [note.commit(), note.secret];
+        let input_note = private_data.input_notes[i];
+        let input = [input_note.commit(), input_note.secret];
         assert(
             poseidon2::Poseidon2::hash(input, input.len()) == public_data.input_nullifiers[i],
-            errors::ERR_NULLIFIER_INVALID
+            errors::ERR_NULLIFIER_INVALID,
         );
+        input_amount += input_note.value;
     }
+    // check commitments exist
+    for i in 0..M {
+        output_amount += private_data.output_notes[i].value;
+    }
+    assert(input_amount == output_amount, ERR_VALUE_BALANCES);
 }
 
 // ------- tests -------
@@ -77,6 +85,25 @@ pub fn test_invalid_nullifier_fails() {
         // uses other note here
         input_nullifiers: [other_note.generate_nullifer()],
         output_commitments: [],
+        merkle_root: 0,
+    };
+    main(private_data, public_data);
+}
+
+#[test(should_fail_with = "1002")]
+pub fn test_value_imbalance() {
+    let input_note = Note::new(1, 100, 1234);
+    let output_note = Note::new(1, 120, 1234);
+    let private_data = TxnInputPrivate {
+        input_notes: [input_note],
+        output_notes: [output_note],
+        merkle_paths: [[0; 32]],
+        path_indices: [[false; 32]],
+    };
+    let public_data = TxnInputPublic {
+        // uses other note here
+        input_nullifiers: [input_note.generate_nullifer()],
+        output_commitments: [output_note.commit()],
         merkle_root: 0,
     };
     main(private_data, public_data);

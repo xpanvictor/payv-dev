@@ -1,6 +1,7 @@
 // Core types
 pub mod models;
 pub mod errors;
+pub mod utils;
 
 // Circuit modules
 pub mod deposit;
