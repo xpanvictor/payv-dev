@@ -1,7 +1,7 @@
 use payv_logic::Note;
+use payv_logic::utils::merkle::{MerkleTree, pad_proof_to_depth};
 use payv_logic::withdraw::main as withdraw_main;
 use payv_logic::withdraw::{WithdrawPrivate, WithdrawPublic};
-use payv_logic::utils::merkle::{MerkleTree, pad_proof_to_depth};
 
 /// Withdraw circuit - converts a private note back to public funds
 ///
