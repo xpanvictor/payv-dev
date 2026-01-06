@@ -1,5 +1,5 @@
 [package]
-name = "transfer"
+name = "withdraw"
 type = "bin"
 authors = ["xpanvictor@gmail.com"]
 
