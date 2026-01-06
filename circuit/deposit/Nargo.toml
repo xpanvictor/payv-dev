@@ -1,0 +1,7 @@
+[package]
+name = "transfer"
+type = "bin"
+authors = ["xpanvictor@gmail.com"]
+
+[dependencies]
+payv_logic = { path = "../payv_logic" }
