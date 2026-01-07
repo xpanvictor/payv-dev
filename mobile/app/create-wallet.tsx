@@ -8,6 +8,7 @@ import {
     ScrollView,
     Dimensions,
     TouchableOpacity,
+    Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,7 @@ import { GradientBackground } from '@/components/GradientBackground';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { SecondaryButton } from '@/components/SecondaryButton';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { createWallet } from '@/services/walletService';
 
 const { width } = Dimensions.get('window');
 
@@ -40,11 +42,21 @@ function TrustBadge({ icon, label }: TrustBadgeProps) {
  */
 export default function CreateWalletScreen() {
     const handleCreate = () => {
-        router.replace('/(tabs)');
+        try {
+            const wallet = createWallet();
+            router.push({
+                pathname: '/passphrase-display',
+                params: { mnemonic: wallet.mnemonic, address: wallet.address },
+            } as any);
+        } catch (error) {
+            Alert.alert('Error', 'Failed to create wallet. Please try again.');
+            console.log(error);
+            
+        }
     };
 
     const handleImport = () => {
-        router.replace('/(tabs)');
+        router.push('/import-wallet' as any);
     };
 
     return (

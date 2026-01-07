@@ -6,11 +6,12 @@ import {
   Image,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { WalletColors } from '@/constants/Colors';
 import { FontFamily } from '@/constants/Typography';
-import { BalanceCard } from '@/components/BalanceCard';
+import { DualBalanceCard } from '@/components/DualBalanceCard';
 import { AssetCard, CryptoAsset } from '@/components/AssetCard';
 import { TransactionCard, TransactionType, TransactionStatus } from '@/components/TransactionCard';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -26,6 +27,14 @@ export default function DashboardScreen() {
 
   const handleToggleVisibility = () => {
     // Toggle balance visibility
+  };
+
+  const handleShield = () => {
+    Alert.alert('Shield', 'Deposit flow coming soon - convert public funds to private balance');
+  };
+
+  const handleUnshield = () => {
+    Alert.alert('Unshield', 'Withdraw flow coming soon - convert private balance to public funds');
   };
 
   return (
@@ -59,12 +68,13 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Balance Card */}
-        <BalanceCard
-          balance="$24,562.34"
-          changePercent={5.2}
-          changeAmount="$1,240.50"
+        {/* Dual Balance Card */}
+        <DualBalanceCard
+          privateBalance="$12,450.00"
+          publicBalance="$8,500.34"
           walletAddress="0x71...8f9"
+          onShield={handleShield}
+          onUnshield={handleUnshield}
           onCopyAddress={handleCopyAddress}
           onToggleVisibility={handleToggleVisibility}
         />

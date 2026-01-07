@@ -1,3 +1,6 @@
+// Crypto polyfill - MUST be first import for ethers.js to work
+import 'react-native-get-random-values';
+
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
@@ -65,6 +68,11 @@ function RootLayoutNav() {
       >
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="create-wallet" />
+        <Stack.Screen name="passphrase-display" />
+        <Stack.Screen name="passphrase-confirm" />
+        <Stack.Screen name="import-wallet" />
+        <Stack.Screen name="setup-pin" />
+        <Stack.Screen name="lock-screen" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
