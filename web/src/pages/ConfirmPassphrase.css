@@ -1,0 +1,68 @@
+.confirm-page {
+    justify-content: space-between;
+    min-height: 100vh;
+    padding-top: var(--spacing-md);
+    padding-bottom: var(--spacing-xl);
+}
+
+.confirm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-sm) 0;
+}
+
+.step.completed {
+    background: var(--color-success);
+    color: var(--color-text-primary);
+}
+
+.step-line.active {
+    background: var(--color-primary);
+}
+
+.confirm-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+    padding: var(--spacing-lg) 0;
+}
+
+.confirm-intro {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+    text-align: center;
+}
+
+.confirm-intro p {
+    max-width: 300px;
+    line-height: 1.6;
+}
+
+.verification-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.error-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background: var(--color-error);
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius-md);
+}
+
+.error-icon {
+    font-size: 1rem;
+}
+
+.confirm-actions {
+    padding-top: var(--spacing-lg);
+}
