@@ -11,6 +11,7 @@ const SetPin = lazy(() => import('./pages/SetPin').then(m => ({ default: m.SetPi
 const ImportWallet = lazy(() => import('./pages/ImportWallet').then(m => ({ default: m.ImportWallet })));
 const UnlockWallet = lazy(() => import('./pages/UnlockWallet').then(m => ({ default: m.UnlockWallet })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const TransactionsPage = lazy(() => import('./pages/TransactionsPage').then(m => ({ default: m.TransactionsPage })));
 
 /**
  * Loading fallback shown while lazy components load.
@@ -63,6 +64,7 @@ function App() {
             <Route path="/import" element={<ImportWallet />} />
             <Route path="/unlock" element={<UnlockWallet />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/transactions" element={<TransactionsPage />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

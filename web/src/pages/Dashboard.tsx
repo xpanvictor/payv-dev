@@ -5,6 +5,11 @@ import { MantleTestnet } from '../services/walletService';
 import { ProofStatus } from '../services/circuitTypes';
 import { ShieldModal } from '../components/ShieldModal';
 import { UnshieldModal } from '../components/UnshieldModal';
+import { SendModal } from '../components/SendModal';
+import { ReceiveModal } from '../components/ReceiveModal';
+import { TransactionDetailsModal } from '../components/TransactionDetailsModal';
+import { Toast } from '../components/Toast';
+import type { Transaction } from '../services/walletService';
 import './Dashboard.css';
 
 /**
@@ -14,6 +19,8 @@ enum ModalType {
     NONE = 'NONE',
     SHIELD = 'SHIELD',
     UNSHIELD = 'UNSHIELD',
+    SEND = 'SEND',
+    RECEIVE = 'RECEIVE',
 }
 
 /**
@@ -27,6 +34,7 @@ export function Dashboard() {
         publicBalance,
         privateBalance,
         notes,
+        transactions,
         proofStatus,
         lock,
         refreshBalances,
@@ -42,6 +50,7 @@ export function Dashboard() {
     const [pinInput, setPinInput] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
 
     useEffect(() => {
         if (status === WalletStatus.NO_WALLET) {
@@ -156,7 +165,7 @@ export function Dashboard() {
                     <div className="logo">
                         <span className="logo-icon">◆</span>
                         <span className="logo-text">
-                            Vault<span className="logo-accent">3</span>
+                            Pay<span className="logo-accent">V</span>
                         </span>
                     </div>
                     <div className="header-actions">
@@ -265,11 +274,17 @@ export function Dashboard() {
                             <span className="action-icon">🔓</span>
                             <span className="action-label">Unshield</span>
                         </button>
-                        <button className="action-btn glass-card">
+                        <button
+                            className="action-btn glass-card"
+                            onClick={() => setActiveModal(ModalType.SEND)}
+                        >
                             <span className="action-icon">📤</span>
                             <span className="action-label">Send</span>
                         </button>
-                        <button className="action-btn glass-card">
+                        <button
+                            className="action-btn glass-card"
+                            onClick={() => setActiveModal(ModalType.RECEIVE)}
+                        >
                             <span className="action-icon">📥</span>
                             <span className="action-label">Receive</span>
                         </button>
@@ -294,13 +309,55 @@ export function Dashboard() {
                         </div>
                     )}
 
-                    {/* Transaction History Placeholder */}
+                    {/* Transaction History */}
                     <div className="transactions-section">
-                        <h2 className="text-display font-semibold mb-md">Recent Activity</h2>
-                        <div className="empty-state glass-card">
-                            <span className="empty-icon">📭</span>
-                            <p className="text-secondary text-sm">No transactions yet</p>
+                        <div className="flex items-center justify-between mb-md">
+                            <h2 className="text-display font-semibold">Recent Activity</h2>
+                            {transactions.length > 0 && (
+                                <button className="btn btn-ghost text-sm" onClick={() => navigate('/transactions')}>
+                                    View All
+                                </button>
+                            )}
                         </div>
+
+                        {transactions.length === 0 ? (
+                            <div className="empty-state glass-card">
+                                <span className="empty-icon">📭</span>
+                                <p className="text-secondary text-sm">No transactions yet</p>
+                            </div>
+                        ) : (
+                            <div className="transactions-list glass-card">
+                                {transactions.slice(0, 3).map((tx) => (
+                                    <div
+                                        key={tx.id}
+                                        className="transaction-item p-sm border-b border-light flex items-center justify-between cursor-pointer hover:bg-white/5"
+                                        onClick={() => setSelectedTx(tx)}
+                                    >
+                                        <div className="flex items-center gap-sm">
+                                            <span className="text-xl">
+                                                {tx.type === 'SEND' && '📤'}
+                                                {tx.type === 'RECEIVE' && '📥'}
+                                                {tx.type === 'SHIELD' && '🔒'}
+                                                {tx.type === 'UNSHIELD' && '🔓'}
+                                            </span>
+                                            <div>
+                                                <div className="font-medium text-sm">{tx.type}</div>
+                                                <div className="text-xs text-secondary">{new Date(tx.date).toLocaleDateString()}</div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="font-medium text-sm">
+                                                {tx.type === 'SEND' || tx.type === 'SHIELD' ? '-' : '+'}
+                                                {tx.amount} MNT
+                                            </div>
+                                            <div className={`text-xs status-${tx.status.toLowerCase()}`}>
+                                                {tx.status}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </main>
 
@@ -345,6 +402,50 @@ export function Dashboard() {
                     onPinChange={handlePinChange}
                     onSubmit={handleUnshield}
                     onClose={closeModal}
+                />
+            )}
+
+            {/* Send Modal */}
+            {activeModal === ModalType.SEND && (
+                <SendModal
+                    onClose={closeModal}
+                    onSuccess={(msg) => {
+                        setSuccessMessage(msg);
+                        setTimeout(() => setSuccessMessage(null), 3000);
+                    }}
+                    onError={(err) => {
+                        setError(err);
+                        setTimeout(() => setError(null), 3000);
+                    }}
+                />
+            )}
+
+            {/* Receive Modal */}
+            {activeModal === ModalType.RECEIVE && (
+                <ReceiveModal onClose={closeModal} />
+            )}
+
+            {/* Transaction Details Modal */}
+            {selectedTx && (
+                <TransactionDetailsModal
+                    transaction={selectedTx}
+                    onClose={() => setSelectedTx(null)}
+                />
+            )}
+
+            {/* Toast Notifications */}
+            {successMessage && (
+                <Toast
+                    message={successMessage}
+                    type="success"
+                    onClose={() => setSuccessMessage(null)}
+                />
+            )}
+            {error && (
+                <Toast
+                    message={error}
+                    type="error"
+                    onClose={() => setError(null)}
                 />
             )}
         </div>

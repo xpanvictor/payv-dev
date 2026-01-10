@@ -10,7 +10,7 @@ export enum NetworkName {
 
 // Use proxy in development to bypass CORS
 const isDev = import.meta.env.DEV;
-const RPC_URL = isDev ? '/rpc' : 'https://rpc.sepolia.mantle.xyz';
+const RPC_URL = isDev ? `${window.location.origin}/rpc` : 'https://rpc.sepolia.mantle.xyz';
 
 export const MantleTestnet = {
     CHAIN_ID: 5003,
@@ -29,6 +29,7 @@ enum StorageKey {
     WALLET_ADDRESS = 'vault3_wallet_address',
     WALLET_PIN_HASH = 'vault3_wallet_pin_hash',
     PRIVATE_BALANCE = 'vault3_private_balance',
+    TRANSACTIONS = 'vault3_transactions',
 }
 
 // ============================================================================
@@ -49,11 +50,28 @@ export interface WalletBalances {
     privateBalance: string;
 }
 
+export type TransactionType = 'SEND' | 'RECEIVE' | 'SHIELD' | 'UNSHIELD';
+
+export interface Transaction {
+    id: string;
+    type: TransactionType;
+    amount: string;
+    date: number;
+    status: 'PENDING' | 'CONFIRMED' | 'FAILED';
+    hash?: string;
+    to?: string;
+    from?: string;
+}
+
 // ============================================================================
 // Encryption Helpers
 // ============================================================================
 
-function xorEncrypt(text: string, key: string): string {
+/**
+ * Simple XOR encryption for local storage obfuscation.
+ * NOT for high-security purposes, just to prevent plain-text storage.
+ */
+function encryptData(text: string, key: string): string {
     let result = '';
     for (let i = 0; i < text.length; i++) {
         result += String.fromCharCode(
@@ -61,6 +79,21 @@ function xorEncrypt(text: string, key: string): string {
         );
     }
     return btoa(result);
+}
+
+function decryptData(encryptedBase64: string, key: string): string {
+    try {
+        const text = atob(encryptedBase64);
+        let result = '';
+        for (let i = 0; i < text.length; i++) {
+            result += String.fromCharCode(
+                text.charCodeAt(i) ^ key.charCodeAt(i % key.length)
+            );
+        }
+        return result;
+    } catch {
+        return '';
+    }
 }
 
 // ============================================================================
@@ -103,7 +136,7 @@ export async function saveWallet(wallet: WalletData, pin: string): Promise<void>
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
 
-    const encryptedMnemonic = xorEncrypt(wallet.mnemonic, pinHashHex);
+    const encryptedMnemonic = encryptData(wallet.mnemonic, pinHashHex);
 
     localStorage.setItem(StorageKey.WALLET_MNEMONIC, encryptedMnemonic);
     localStorage.setItem(StorageKey.WALLET_ADDRESS, wallet.address);
@@ -130,7 +163,7 @@ export async function loadWallet(pin: string): Promise<WalletData | null> {
         throw new Error('Incorrect PIN');
     }
 
-    const mnemonic = xorEncrypt(encryptedMnemonic, pinHashHex);
+    const mnemonic = decryptData(encryptedMnemonic, pinHashHex);
 
     return { mnemonic, address };
 }
@@ -228,3 +261,46 @@ export function getMnemonicWords(mnemonic: string): string[] {
     return mnemonic.trim().split(' ');
 }
 
+
+
+export async function loadTransactions(pin: string): Promise<Transaction[]> {
+    const storedData = localStorage.getItem(StorageKey.TRANSACTIONS);
+    const storedPinHash = localStorage.getItem(StorageKey.WALLET_PIN_HASH);
+
+    if (!storedData || !storedPinHash) {
+        return [];
+    }
+
+    // Verify PIN first
+    const encoder = new TextEncoder();
+    const pinData = encoder.encode(pin);
+    const pinHash = await crypto.subtle.digest('SHA-256', pinData);
+    const pinHashHex = Array.from(new Uint8Array(pinHash))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+    if (pinHashHex !== storedPinHash) {
+        throw new Error('Incorrect PIN');
+    }
+
+    try {
+        const decryptedJson = decryptData(storedData, pinHashHex);
+        return JSON.parse(decryptedJson);
+    } catch {
+        return [];
+    }
+}
+
+export async function saveTransactions(transactions: Transaction[], pin: string): Promise<void> {
+    const encoder = new TextEncoder();
+    const pinData = encoder.encode(pin);
+    const pinHash = await crypto.subtle.digest('SHA-256', pinData);
+    const pinHashHex = Array.from(new Uint8Array(pinHash))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+    const json = JSON.stringify(transactions);
+    const encryptedData = encryptData(json, pinHashHex);
+
+    localStorage.setItem(StorageKey.TRANSACTIONS, encryptedData);
+}

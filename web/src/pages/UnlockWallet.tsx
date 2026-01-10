@@ -89,7 +89,7 @@ export function UnlockWallet() {
                     <div className="logo">
                         <span className="logo-icon">◆</span>
                         <span className="logo-text">
-                            Vault<span className="logo-accent">3</span>
+                            Pay<span className="logo-accent">V</span>
                         </span>
                     </div>
                 </header>

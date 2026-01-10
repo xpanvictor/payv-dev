@@ -13,6 +13,9 @@ import {
     setPrivateBalance,
     type WalletData,
     type CreatedWallet,
+    type Transaction,
+    loadTransactions,
+    saveTransactions,
 } from '../services/walletService';
 import {
     saveNote,
@@ -44,6 +47,7 @@ interface WalletContextState {
     wallet: WalletData | null;
     pendingWallet: CreatedWallet | null;
     notes: StoredNote[];
+    transactions: Transaction[];
     proofStatus: ProofStatus;
 }
 
@@ -72,6 +76,7 @@ interface WalletContextActions {
     shield: (amount: string, pin: string) => Promise<ShieldResult>;
     unshield: (noteNullifier: string, pin: string) => Promise<UnshieldResult>;
     refreshNotes: (pin: string) => Promise<void>;
+    addTransaction: (tx: Omit<Transaction, 'id' | 'date'>, pin: string) => Promise<void>;
 }
 
 type WalletContextType = WalletContextState & WalletContextActions;
@@ -90,6 +95,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const [wallet, setWallet] = useState<WalletData | null>(null);
     const [pendingWallet, setPendingWallet] = useState<CreatedWallet | null>(null);
     const [notes, setNotes] = useState<StoredNote[]>([]);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [proofStatus, setProofStatus] = useState<ProofStatus>(ProofStatus.IDLE);
 
     // Initialize on mount
@@ -138,10 +144,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             const pubBal = await getPublicBalance(pendingWallet.address);
             setPublicBalance(pubBal);
             setPrivateBalanceState(getPrivateBalance());
+
         } catch {
             setPublicBalance('0.0000');
             setPrivateBalanceState('0.0000');
         }
+
+        // Initialize empty transactions
+        setTransactions([]);
+        await saveTransactions([], pin);
     }, [pendingWallet]);
 
     const unlock = useCallback(async (pin: string): Promise<boolean> => {
@@ -160,9 +171,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                 const pubBal = await getPublicBalance(walletData.address);
                 setPublicBalance(pubBal);
                 setPrivateBalanceState(getPrivateBalance());
+
             } catch {
                 setPublicBalance('0.0000');
                 setPrivateBalanceState('0.0000');
+            }
+
+            // Load transactions
+            try {
+                const txs = await loadTransactions(pin);
+                setTransactions(txs);
+            } catch {
+                setTransactions([]);
             }
 
             return true;
@@ -182,6 +202,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setAddress(null);
         setPublicBalance(null);
         setPrivateBalanceState(null);
+        setTransactions([]);
         setStatus(WalletStatus.NO_WALLET);
     }, []);
 
@@ -214,6 +235,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
+    const addTransaction = useCallback(async (txData: Omit<Transaction, 'id' | 'date'>, pin: string) => {
+        const newTx: Transaction = {
+            ...txData,
+            id: crypto.randomUUID(),
+            date: Date.now(),
+        };
+
+        const updatedTxs = [newTx, ...transactions];
+        setTransactions(updatedTxs);
+        await saveTransactions(updatedTxs, pin);
+    }, [transactions]);
+
     const shield = useCallback(async (amount: string, pin: string): Promise<ShieldResult> => {
         if (!address) {
             return { success: false, error: 'No wallet address' };
@@ -240,6 +273,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
             setProofStatus(ProofStatus.COMPLETE);
 
+            await addTransaction({
+                type: 'SHIELD',
+                amount: amount,
+                status: 'CONFIRMED'
+            }, pin);
+
             return {
                 success: true,
                 commitment: result.publicInputs.commitment,
@@ -255,6 +294,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     const unshield = useCallback(async (noteNullifier: string, pin: string): Promise<UnshieldResult> => {
         try {
+            const note = notes.find(n => n.nullifier === noteNullifier);
+            const amount = note ? (Number(note.value) / 1e18).toFixed(4) : '0.0000';
+
             // Mark note as spent locally
             const marked = await markNoteSpent(noteNullifier, pin);
             if (!marked) {
@@ -263,6 +305,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
             // Update balances
             await refreshNotes(pin);
+
+            await addTransaction({
+                type: 'UNSHIELD',
+                amount,
+                status: 'CONFIRMED'
+            }, pin);
 
             return {
                 success: true,
@@ -274,7 +322,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                 error: err instanceof Error ? err.message : 'Unshield failed',
             };
         }
-    }, [refreshNotes]);
+    }, [refreshNotes, notes, addTransaction]);
 
     // Memoize context value to prevent unnecessary re-renders of consumers
     const value: WalletContextType = useMemo(() => ({
@@ -285,6 +333,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         wallet,
         pendingWallet,
         notes,
+        transactions,
         proofStatus,
         generateNewWallet,
         restoreWallet,
@@ -298,6 +347,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         shield,
         unshield,
         refreshNotes,
+        addTransaction,
     }), [
         status,
         address,
@@ -306,6 +356,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         wallet,
         pendingWallet,
         notes,
+        transactions,
         proofStatus,
         generateNewWallet,
         restoreWallet,
@@ -318,6 +369,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         shield,
         unshield,
         refreshNotes,
+        addTransaction,
     ]);
 
     return (
