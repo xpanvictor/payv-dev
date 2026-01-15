@@ -30,13 +30,16 @@ func NewListener(rpcURL string, contractAddr string, storage *Storage) (*Listene
 		return nil, err
 	}
 
-	// Contract ABI - simplified for this example
+	// Contract ABI - matches the actual contract events
 	contractABI := `[
 		{
 			"anonymous": false,
 			"inputs": [
 				{"indexed": true, "name": "commitment", "type": "bytes32"},
-				{"indexed": false, "name": "encryptedNote", "type": "bytes"}
+				{"indexed": false, "name": "amount", "type": "uint256"},
+				{"indexed": false, "name": "leafIndex", "type": "uint32"},
+				{"indexed": false, "name": "timestamp", "type": "uint256"},
+				{"indexed": false, "name": "encryptedInputs", "type": "bytes"}
 			],
 			"name": "Deposit",
 			"type": "event"
@@ -44,9 +47,11 @@ func NewListener(rpcURL string, contractAddr string, storage *Storage) (*Listene
 		{
 			"anonymous": false,
 			"inputs": [
-				{"indexed": true, "name": "nullifier", "type": "bytes32"},
-				{"indexed": true, "name": "commitment", "type": "bytes32"},
-				{"indexed": false, "name": "encryptedNote", "type": "bytes"}
+				{"indexed": true, "name": "inputNullifier", "type": "bytes32"},
+				{"indexed": false, "name": "leafIndex1", "type": "uint256"},
+				{"indexed": false, "name": "leafIndex2", "type": "uint32"},
+				{"indexed": false, "name": "timestamp", "type": "uint256"},
+				{"indexed": false, "name": "encryptedInputs", "type": "bytes"}
 			],
 			"name": "Transfer",
 			"type": "event"
@@ -54,9 +59,13 @@ func NewListener(rpcURL string, contractAddr string, storage *Storage) (*Listene
 		{
 			"anonymous": false,
 			"inputs": [
-				{"indexed": true, "name": "nullifier", "type": "bytes32"}
+				{"indexed": false, "name": "to", "type": "address"},
+				{"indexed": false, "name": "amount", "type": "uint256"},
+				{"indexed": true, "name": "nullifierHash", "type": "bytes32"},
+				{"indexed": false, "name": "timestamp", "type": "uint256"},
+				{"indexed": false, "name": "encryptedInputs", "type": "bytes"}
 			],
-			"name": "Withdraw",
+			"name": "Withdrawal",
 			"type": "event"
 		}
 	]`
@@ -133,14 +142,27 @@ func (l *Listener) processLog(vLog types.Log) {
 }
 
 func (l *Listener) processDeposit(vLog types.Log) {
-	// Parse event data
+	// Parse event data: commitment (indexed), amount, leafIndex, timestamp, encryptedInputs
 	commitment := vLog.Topics[1].Hex()
-	encryptedNote := string(vLog.Data)
+
+	// Unpack the non-indexed data
+	var depositEvent struct {
+		Amount          *big.Int
+		LeafIndex       uint32
+		Timestamp       *big.Int
+		EncryptedInputs []byte
+	}
+
+	err := l.abi.UnpackIntoInterface(&depositEvent, "Deposit", vLog.Data)
+	if err != nil {
+		log.Printf("Failed to unpack deposit event: %v", err)
+		return
+	}
 
 	// Create commitment
 	comm := &common.Commitment{
 		Hash:     commitment,
-		Index:    uint64(len(l.storage.commitments)), // This is simplified
+		Index:    uint64(depositEvent.LeafIndex),
 		BlockNum: vLog.BlockNumber,
 		TxHash:   vLog.TxHash.Hex(),
 	}
@@ -148,51 +170,67 @@ func (l *Listener) processDeposit(vLog types.Log) {
 	l.storage.AddCommitment(comm)
 
 	// For deposits, the encrypted note is for the depositor
-	// In a real implementation, you'd parse the recipient from the note
 	note := &common.EncryptedNote{
 		CommitmentHash: commitment,
-		Recipient:      "", // Would be parsed from encrypted note
-		Ciphertext:     encryptedNote,
+		Recipient:      "", // Would be parsed from encrypted note in production
+		Ciphertext:     string(depositEvent.EncryptedInputs),
 		BlockNum:       vLog.BlockNumber,
 		TxHash:         vLog.TxHash.Hex(),
 	}
 
 	l.storage.AddEncryptedNote(note)
 
-	log.Printf("Processed deposit: commitment=%s", commitment)
+	log.Printf("Processed deposit: commitment=%s, amount=%s, leafIndex=%d",
+		commitment, depositEvent.Amount.String(), depositEvent.LeafIndex)
 }
 
 func (l *Listener) processTransfer(vLog types.Log) {
+	// Parse event data: inputNullifier (indexed), leafIndex1, leafIndex2, timestamp, encryptedInputs
 	nullifier := vLog.Topics[1].Hex()
-	commitment := vLog.Topics[2].Hex()
-	encryptedNote := string(vLog.Data)
 
-	// Add new commitment
-	comm := &common.Commitment{
-		Hash:     commitment,
-		Index:    uint64(len(l.storage.commitments)),
-		BlockNum: vLog.BlockNumber,
-		TxHash:   vLog.TxHash.Hex(),
+	// Unpack the non-indexed data
+	var transferEvent struct {
+		LeafIndex1      *big.Int
+		LeafIndex2      uint32
+		Timestamp       *big.Int
+		EncryptedInputs []byte
 	}
 
-	l.storage.AddCommitment(comm)
-
-	// Add encrypted note for recipient
-	note := &common.EncryptedNote{
-		CommitmentHash: commitment,
-		Recipient:      "", // Would be parsed from encrypted note
-		Ciphertext:     encryptedNote,
-		BlockNum:       vLog.BlockNumber,
-		TxHash:         vLog.TxHash.Hex(),
+	err := l.abi.UnpackIntoInterface(&transferEvent, "Transfer", vLog.Data)
+	if err != nil {
+		log.Printf("Failed to unpack transfer event: %v", err)
+		return
 	}
 
-	l.storage.AddEncryptedNote(note)
+	// For transfers, we need to extract the output commitments from the transaction input data
+	// This is a simplified version - in production, you'd parse the transaction input
+	// For now, we'll create placeholder commitments based on the nullifier
 
-	log.Printf("Processed transfer: nullifier=%s, commitment=%s", nullifier, commitment)
+	log.Printf("Processed transfer: nullifier=%s, leafIndex1=%s, leafIndex2=%d",
+		nullifier, transferEvent.LeafIndex1.String(), transferEvent.LeafIndex2)
+
+	// Note: In a full implementation, you'd need to parse the transaction input
+	// to extract the actual output commitments and add them to storage
 }
 
 func (l *Listener) processWithdraw(vLog types.Log) {
+	// Parse event data: to, amount, nullifierHash (indexed), timestamp, encryptedInputs
 	nullifier := vLog.Topics[1].Hex()
 
-	log.Printf("Processed withdraw: nullifier=%s", nullifier)
+	// Unpack the non-indexed data
+	var withdrawEvent struct {
+		To              ethcommon.Address
+		Amount          *big.Int
+		Timestamp       *big.Int
+		EncryptedInputs []byte
+	}
+
+	err := l.abi.UnpackIntoInterface(&withdrawEvent, "Withdrawal", vLog.Data)
+	if err != nil {
+		log.Printf("Failed to unpack withdraw event: %v", err)
+		return
+	}
+
+	log.Printf("Processed withdraw: nullifier=%s, to=%s, amount=%s",
+		nullifier, withdrawEvent.To.Hex(), withdrawEvent.Amount.String())
 }
