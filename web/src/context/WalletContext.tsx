@@ -24,9 +24,17 @@ import {
     markNoteSpent,
     type StoredNote,
 } from '../services/noteStorage';
-import { generateDepositProof } from '../services/circuitService';
+import { generateDepositProof, generateWithdrawProof } from '../services/circuitService';
 import { randomField, hexToField } from '../utils/poseidonHash';
 import { ProofStatus } from '../services/circuitTypes';
+import {
+    submitDeposit,
+    submitWithdraw,
+    pollTransactionStatus,
+    getMerkleProof,
+    getMerkleRoot,
+    RelayerTransactionStatus,
+} from '../services/apiService';
 
 // ============================================================================
 // Wallet State Types
@@ -265,24 +273,64 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
             const result = await generateDepositProof({ note });
 
-            // Save note to local storage
-            await saveNote(note, pin);
+            // Submit deposit to relayer
+            setProofStatus(ProofStatus.SUBMITTING);
+            const proofHex = '0x' + Buffer.from(result.proof).toString('hex');
+            const publicInputsHex = [
+                result.publicInputs.commitment,
+                '0x' + amountWei.toString(16),
+            ];
+            // Encrypted note placeholder (in production, encrypt with recipient's key)
+            const encryptedNote = '0x' + Buffer.from(JSON.stringify({
+                owner: owner.toString(),
+                value: amountWei.toString(),
+                secret: secret.toString(),
+            })).toString('hex');
 
-            // Update private balance
-            await refreshNotes(pin);
+            const submitResult = await submitDeposit(
+                proofHex,
+                publicInputsHex,
+                encryptedNote,
+                amountWei.toString(),
+                address
+            );
 
-            setProofStatus(ProofStatus.COMPLETE);
-
+            // Add pending transaction
             await addTransaction({
                 type: 'SHIELD',
                 amount: amount,
-                status: 'CONFIRMED'
+                status: 'PENDING',
+                hash: submitResult.transactionId,
             }, pin);
 
-            return {
-                success: true,
-                commitment: result.publicInputs.commitment,
-            };
+            // Poll for confirmation
+            const finalStatus = await pollTransactionStatus(submitResult.transactionId);
+
+            if (finalStatus.Status === RelayerTransactionStatus.CONFIRMED) {
+                // Save note to local storage only after on-chain confirmation
+                await saveNote(note, pin);
+                await refreshNotes(pin);
+
+                // Update transaction to confirmed
+                await addTransaction({
+                    type: 'SHIELD',
+                    amount: amount,
+                    status: 'CONFIRMED',
+                    hash: finalStatus.TxHash,
+                }, pin);
+
+                setProofStatus(ProofStatus.COMPLETE);
+                return {
+                    success: true,
+                    commitment: result.publicInputs.commitment,
+                };
+            } else {
+                setProofStatus(ProofStatus.ERROR);
+                return {
+                    success: false,
+                    error: finalStatus.Error || 'Transaction failed',
+                };
+            }
         } catch (err) {
             setProofStatus(ProofStatus.ERROR);
             return {
@@ -290,39 +338,114 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                 error: err instanceof Error ? err.message : 'Shield failed',
             };
         }
-    }, [address, refreshNotes]);
+    }, [address, refreshNotes, addTransaction]);
 
     const unshield = useCallback(async (noteNullifier: string, pin: string): Promise<UnshieldResult> => {
-        try {
-            const note = notes.find(n => n.nullifier === noteNullifier);
-            const amount = note ? (Number(note.value) / 1e18).toFixed(4) : '0.0000';
+        if (!address) {
+            return { success: false, error: 'No wallet address' };
+        }
 
-            // Mark note as spent locally
-            const marked = await markNoteSpent(noteNullifier, pin);
-            if (!marked) {
+        try {
+            const storedNote = notes.find(n => n.nullifier === noteNullifier);
+            if (!storedNote) {
                 return { success: false, error: 'Note not found' };
             }
 
-            // Update balances
-            await refreshNotes(pin);
+            const amount = (Number(storedNote.value) / 1e18).toFixed(4);
 
+            setProofStatus(ProofStatus.LOADING_CIRCUIT);
+
+            // Fetch merkle proof from indexer
+            const merkleProof = await getMerkleProof(storedNote.commitment);
+            const merkleRoot = await getMerkleRoot();
+
+            // Convert merkle data to circuit format
+            const merklePath = merkleProof.path.map(p => BigInt(p));
+            const pathIndices = merkleProof.indices.map(i => i === 1);
+
+            setProofStatus(ProofStatus.GENERATING_PROOF);
+
+            // Reconstruct note for proof generation
+            const note = {
+                owner: BigInt(storedNote.owner),
+                value: BigInt(storedNote.value),
+                secret: BigInt(storedNote.secret),
+            };
+
+            const result = await generateWithdrawProof({
+                note,
+                recipient: hexToField(address),
+                withdrawAmount: BigInt(storedNote.value),
+                relayerFee: BigInt(0),
+                merklePath,
+                pathIndices,
+                merkleRoot: BigInt(merkleRoot),
+            });
+
+            // Submit withdraw to relayer
+            setProofStatus(ProofStatus.SUBMITTING);
+            const proofHex = '0x' + Buffer.from(result.proof).toString('hex');
+            const publicInputsHex = [
+                result.publicInputs.nullifier,
+                result.publicInputs.merkleRoot,
+                result.publicInputs.recipient,
+                result.publicInputs.withdrawAmount,
+                result.publicInputs.relayerFee,
+            ];
+            const encryptedNote = '0x';
+
+            const submitResult = await submitWithdraw(
+                proofHex,
+                publicInputsHex,
+                encryptedNote,
+                address,
+                address
+            );
+
+            // Add pending transaction
             await addTransaction({
                 type: 'UNSHIELD',
                 amount,
-                status: 'CONFIRMED'
+                status: 'PENDING',
+                hash: submitResult.transactionId,
             }, pin);
 
-            return {
-                success: true,
-                nullifier: noteNullifier,
-            };
+            // Poll for confirmation
+            const finalStatus = await pollTransactionStatus(submitResult.transactionId);
+
+            if (finalStatus.Status === RelayerTransactionStatus.CONFIRMED) {
+                // Mark note as spent only after on-chain confirmation
+                await markNoteSpent(noteNullifier, pin);
+                await refreshNotes(pin);
+
+                // Update transaction to confirmed
+                await addTransaction({
+                    type: 'UNSHIELD',
+                    amount,
+                    status: 'CONFIRMED',
+                    hash: finalStatus.TxHash,
+                }, pin);
+
+                setProofStatus(ProofStatus.COMPLETE);
+                return {
+                    success: true,
+                    nullifier: noteNullifier,
+                };
+            } else {
+                setProofStatus(ProofStatus.ERROR);
+                return {
+                    success: false,
+                    error: finalStatus.Error || 'Transaction failed',
+                };
+            }
         } catch (err) {
+            setProofStatus(ProofStatus.ERROR);
             return {
                 success: false,
                 error: err instanceof Error ? err.message : 'Unshield failed',
             };
         }
-    }, [refreshNotes, notes, addTransaction]);
+    }, [address, refreshNotes, notes, addTransaction]);
 
     // Memoize context value to prevent unnecessary re-renders of consumers
     const value: WalletContextType = useMemo(() => ({
